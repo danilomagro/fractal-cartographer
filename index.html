@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A browser-based fractal terrain generator: simplex noise, elevation palettes and an orbitable 3D view. Single file, no build step.">
+<title>Fractal Cartographer</title>
+<style>
+  :root{ color-scheme: light dark; }
+  html,body{ margin:0; }
+  img{ max-width:100%; }
+  [hidden]{ display:none !important; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif&display=swap">
+<style>
+:root{
+  --ground:#E6EBE9;
+  --panel:#FAFBFA;
+  --panel-2:#F0F4F2;
+  --edge:#C8D3CF;
+  --edge-soft:#DDE5E2;
+  --ink:#0E1C19;
+  --muted:#5A706C;
+  --accent:#0E6E62;
+  --accent-ink:#0A4B43;
+  --accent-soft:#D8E8E3;
+  --on-accent:#F7FBFA;
+  --shadow:0 1px 2px rgba(14,28,25,.06), 0 8px 24px rgba(14,28,25,.06);
+  --serif:"Instrument Serif", Georgia, "Times New Roman", serif;
+  --sans:"Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#08110F;
+    --panel:#0E1A18;
+    --panel-2:#132220;
+    --edge:#1E302C;
+    --edge-soft:#172624;
+    --ink:#E6EEEB;
+    --muted:#8AA29D;
+    --accent:#3FBFA8;
+    --accent-ink:#7FD9C8;
+    --accent-soft:#11322C;
+    --on-accent:#04201C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#08110F;
+  --panel:#0E1A18;
+  --panel-2:#132220;
+  --edge:#1E302C;
+  --edge-soft:#172624;
+  --ink:#E6EEEB;
+  --muted:#8AA29D;
+  --accent:#3FBFA8;
+  --accent-ink:#7FD9C8;
+  --accent-soft:#11322C;
+  --on-accent:#04201C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.app{
+  display:grid; grid-template-columns:336px minmax(0,1fr);
+  gap:16px; height:100dvh; padding:16px;
+}
+
+/* ── rail ─────────────────────────────────────────────── */
+.rail{
+  background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+  overflow-y:auto; overflow-x:hidden; box-shadow:var(--shadow);
+  display:flex; flex-direction:column;
+}
+.masthead{ padding:20px 20px 16px; border-bottom:1px solid var(--edge); }
+.mast-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.masthead h1{
+  font-family:var(--serif); font-weight:400; font-size:34px; line-height:1.02;
+  margin:0 0 6px; letter-spacing:-.01em; text-wrap:balance;
+}
+.masthead p{ margin:0; color:var(--muted); font-size:12.5px; max-width:34ch; }
+
+.lang{
+  display:flex; border:1px solid var(--edge); border-radius:6px; overflow:hidden;
+  flex:0 0 auto; margin-top:4px;
+}
+.lang button{
+  border:0; border-radius:0; padding:4px 8px; font-size:10.5px; font-weight:600;
+  letter-spacing:.08em; background:var(--panel-2); color:var(--muted); cursor:pointer;
+}
+.lang button + button{ border-left:1px solid var(--edge); }
+.lang button:hover{ color:var(--accent); }
+.lang button[aria-pressed="true"]{ background:var(--accent); color:var(--on-accent); }
+
+.rail-body{ padding:4px 20px 20px; display:flex; flex-direction:column; gap:2px; }
+
+.group{ padding-top:18px; }
+.group + .group{ margin-top:4px; }
+.group-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+.group-head h2{
+  font-size:10.5px; font-weight:600; letter-spacing:.11em; text-transform:uppercase;
+  margin:0; color:var(--accent);
+}
+.group-head .rule{ flex:1; height:1px; background:var(--edge); }
+.group-head .rule::after{
+  content:""; display:block; height:1px; background:var(--edge-soft); margin-top:2px;
+}
+
+.ctl{ display:flex; flex-direction:column; gap:5px; padding:7px 0; }
+.ctl-top{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.ctl label{ font-size:12.5px; font-weight:500; color:var(--ink); }
+.ctl .val{
+  font-family:var(--mono); font-size:11.5px; font-variant-numeric:tabular-nums;
+  color:var(--muted); white-space:nowrap;
+}
+.ctl .hint{ font-size:11px; color:var(--muted); margin-top:-1px; }
+
+input[type=range]{
+  -webkit-appearance:none; appearance:none; width:100%; height:18px;
+  background:transparent; cursor:grab; margin:0;
+}
+input[type=range]:active{ cursor:grabbing; }
+input[type=range]::-webkit-slider-runnable-track{ height:3px; border-radius:2px; background:var(--edge); }
+input[type=range]::-moz-range-track{ height:3px; border-radius:2px; background:var(--edge); }
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none; width:14px; height:14px; margin-top:-5.5px;
+  border-radius:50%; background:var(--panel); border:2px solid var(--accent);
+  box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+input[type=range]::-moz-range-thumb{
+  width:14px; height:14px; border-radius:50%; background:var(--panel);
+  border:2px solid var(--accent); box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+input[type=range]:focus-visible{ outline:2px solid var(--accent); outline-offset:4px; border-radius:4px; }
+
+select, input[type=number]{
+  width:100%; font-family:var(--sans); font-size:12.5px; color:var(--ink);
+  background:var(--panel-2); border:1px solid var(--edge); border-radius:6px;
+  padding:7px 9px; appearance:none;
+}
+select{
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size:5px 5px, 5px 5px; background-repeat:no-repeat; padding-right:30px;
+}
+select:focus-visible, input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+.check{ display:flex; align-items:center; gap:9px; padding:7px 0; cursor:pointer; }
+.check input{ accent-color:var(--accent); width:15px; height:15px; margin:0; cursor:pointer; }
+.check span{ font-size:12.5px; font-weight:500; }
+
+.seed-row{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }
+button{
+  font-family:var(--sans); font-size:12.5px; font-weight:600; color:var(--ink);
+  background:var(--panel-2); border:1px solid var(--edge); border-radius:6px;
+  padding:8px 12px; cursor:pointer; white-space:nowrap;
+}
+button:hover{ border-color:var(--accent); color:var(--accent); }
+button:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+button.primary{ background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+button.primary:hover{ filter:brightness(1.08); }
+.btn-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:16px; }
+
+.colophon{
+  margin-top:auto; padding:16px 20px; border-top:1px solid var(--edge);
+  font-size:11px; color:var(--muted); line-height:1.5;
+}
+.colophon b{ font-weight:600; color:var(--ink); }
+
+/* ── stage ────────────────────────────────────────────── */
+.stage{
+  position:relative; border-radius:10px; overflow:hidden; min-height:0;
+  border:1px solid var(--edge); box-shadow:var(--shadow);
+  background:linear-gradient(#a9c7dd 0%, #d5e4ec 52%, #eaeee9 100%);
+}
+#viewport{ position:absolute; inset:0; }
+#viewport canvas{ display:block; touch-action:none; }
+
+.hud{ position:absolute; pointer-events:none; }
+.chips{ top:12px; left:12px; right:12px; display:flex; flex-wrap:wrap; gap:6px; }
+.chip{
+  background:rgba(255,255,255,.82); border:1px solid rgba(14,28,25,.12);
+  border-radius:6px; padding:5px 9px; backdrop-filter:blur(6px);
+  display:flex; align-items:baseline; gap:7px;
+}
+.chip .k{
+  font-size:9.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:#4a5f5b;
+}
+.chip .v{
+  font-family:var(--mono); font-size:12px; font-weight:500;
+  font-variant-numeric:tabular-nums; color:#0E1C19;
+}
+.hint-bar{
+  bottom:12px; left:12px; font-size:11px; color:#2c3c39;
+  background:rgba(255,255,255,.72); border:1px solid rgba(14,28,25,.10);
+  border-radius:6px; padding:5px 9px; backdrop-filter:blur(6px);
+}
+.legend{
+  bottom:12px; right:12px; display:flex; gap:8px; align-items:stretch;
+  background:rgba(255,255,255,.82); border:1px solid rgba(14,28,25,.12);
+  border-radius:6px; padding:9px 10px; backdrop-filter:blur(6px);
+}
+.legend .bar{ width:11px; border-radius:2px; border:1px solid rgba(14,28,25,.18); }
+.legend .ticks{
+  display:flex; flex-direction:column; justify-content:space-between;
+  font-family:var(--mono); font-size:10px; font-variant-numeric:tabular-nums;
+  color:#2c3c39; height:104px;
+}
+.legend .cap{
+  writing-mode:vertical-rl; font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+  font-weight:600; color:#4a5f5b; margin-left:2px;
+}
+.fallback{
+  position:absolute; inset:0; display:none; place-content:center; text-align:center;
+  padding:32px; background:var(--panel); color:var(--ink); font-size:13px;
+}
+
+@media (max-width:900px){
+  .app{ grid-template-columns:1fr; height:auto; padding:16px; gap:14px; }
+  .stage{ height:56vh; min-height:340px; }
+  .rail{ overflow:visible; }
+  .legend .ticks{ height:84px; }
+}
+@media (prefers-reduced-motion: reduce){
+  *{ animation:none !important; transition:none !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="masthead">
+      <div class="mast-top">
+        <h1 data-i18n="title">Fractal Cartographer</h1>
+        <div class="lang" id="lang" role="group" aria-label="Language / Lingua">
+          <button type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button type="button" data-lang="it" aria-pressed="false">IT</button>
+        </div>
+      </div>
+      <p data-i18n="tagline"></p>
+    </div>
+    <div class="rail-body" id="rail-body"></div>
+    <div class="colophon" data-i18n-html="colophon"></div>
+  </aside>
+
+  <main class="stage" id="stage">
+    <div id="viewport"></div>
+    <div class="hud chips" id="chips"></div>
+    <div class="hud hint-bar" data-i18n="hintBar"></div>
+    <div class="hud legend" id="legend" hidden>
+      <div class="bar" id="legend-bar"></div>
+      <div class="ticks" id="legend-ticks"></div>
+      <div class="cap" data-i18n="legendCap"></div>
+    </div>
+    <div class="fallback" id="fallback" data-i18n="fallback"></div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ── strings ────────────────────────────────────────── */
+  var I18N = {
+    en: {
+      locale: "en-US",
+      title: "Fractal Cartographer",
+      tagline: "A landscape grown from noise: no real-world data, just stacked octaves and a palette keyed to elevation.",
+      colophon: "Every terrain is a <b>fractal field</b> of simplex noise sampled on a square grid, then coloured by elevation, slope and sea level. The same seed always rebuilds the same world.",
+      hintBar: "Drag to rotate · scroll or pinch to zoom",
+      legendCap: "elevation a.s.l.",
+      fallback: "The 3D engine could not be loaded. Reload the page to try again.",
+      groups: { shape: "Terrain shape", water: "Elevation and water", render: "Rendering", seed: "Seed" },
+      chips: { peak: "Peak", land: "Land", seabed: "Seabed", vertices: "Vertices", seed: "Seed" },
+      seedAria: "Generator seed",
+      seedHint: "The same number rebuilds the same world, every time.",
+      roll: "Roll", newWorld: "New world", reset: "Reset",
+      palettes: { alpino: "Alpine", deserto: "Desert", artico: "Arctic", vulcanico: "Volcanic", aliena: "Alien" },
+      ctl: {
+        noiseType: { label: "Noise type", hint: "How the noise octaves are stacked.",
+          options: ["fBm — valleys and hills", "Ridged — sharp crests", "Billow — rounded swells"] },
+        scale: { label: "Scale", hint: "How many mountain ranges fit inside the map." },
+        octaves: { label: "Octaves", hint: "Layers of detail stacked on top of one another." },
+        persistence: { label: "Persistence", hint: "How much the fine octaves weigh — high means rough ground." },
+        lacunarity: { label: "Lacunarity", hint: "Frequency jump from one octave to the next." },
+        warp: { label: "Domain warp", hint: "Folds the grid onto itself — sinuous crests instead of straight ones." },
+        erosion: { label: "Erosion", hint: "Exponent on elevation — high means wide plains and lonely peaks." },
+        island: { label: "Island falloff", hint: "Pulls the edges of the map down until it becomes an island." },
+        altitude: { label: "Total relief", hint: "Drop between the lowest point and the summit." },
+        sea: { label: "Sea level", hint: "Where the water stops, as a fraction of total relief." },
+        snow: { label: "Snow line", hint: "Where the top band of the palette begins." },
+        palette: { label: "Palette" },
+        res: { label: "Grid resolution",
+          options: ["96 × 96 — light", "128 × 128", "160 × 160 — recommended", "200 × 200", "256 × 256 — heavy"] },
+        contours: { label: "Contour lines every 200 m" },
+        spin: { label: "Auto-rotate" }
+      }
+    },
+    it: {
+      locale: "it-IT",
+      title: "Cartografo Frattale",
+      tagline: "Un paesaggio nato dal rumore: nessun dato reale, solo ottave sovrapposte e una tavolozza per fasce di quota.",
+      colophon: "Ogni terreno è un <b>campo frattale</b> di simplex noise campionato su una griglia quadrata e colorato per quota, pendenza e livello del mare. Lo stesso seme rigenera sempre lo stesso mondo.",
+      hintBar: "Trascina per ruotare · rotella o pizzico per lo zoom",
+      legendCap: "quota s.l.m.",
+      fallback: "Non è stato possibile caricare il motore 3D. Ricarica la pagina per riprovare.",
+      groups: { shape: "Forma del rilievo", water: "Quote e acqua", render: "Resa", seed: "Seme" },
+      chips: { peak: "Vetta", land: "Emerso", seabed: "Fondale", vertices: "Vertici", seed: "Seme" },
+      seedAria: "Seme del generatore",
+      seedHint: "Lo stesso numero ricostruisce lo stesso mondo, sempre.",
+      roll: "Sorteggia", newWorld: "Nuovo mondo", reset: "Ripristina",
+      palettes: { alpino: "Alpino", deserto: "Deserto", artico: "Artico", vulcanico: "Vulcanico", aliena: "Aliena" },
+      ctl: {
+        noiseType: { label: "Tipo di rumore", hint: "Come vengono sommate le ottave del rumore.",
+          options: ["fBm — valli e colline", "Ridged — creste aguzze", "Billow — dossi tondi"] },
+        scale: { label: "Scala", hint: "Quante catene montuose entrano nella mappa." },
+        octaves: { label: "Ottave", hint: "Livelli di dettaglio sovrapposti." },
+        persistence: { label: "Persistenza", hint: "Quanto pesano le ottave fini: alta = terreno ruvido." },
+        lacunarity: { label: "Lacunarità", hint: "Salto di frequenza fra un'ottava e la successiva." },
+        warp: { label: "Deriva del dominio", hint: "Piega il reticolo su sé stesso: creste sinuose, non rettilinee." },
+        erosion: { label: "Erosione", hint: "Esponente sulla quota: alto = pianure ampie e picchi isolati." },
+        island: { label: "Isolamento", hint: "Abbassa i bordi della mappa fino a trasformarla in un'isola." },
+        altitude: { label: "Rilievo totale", hint: "Dislivello fra il punto più basso e la vetta." },
+        sea: { label: "Livello del mare", hint: "Quota a cui si ferma l'acqua, in frazione del rilievo." },
+        snow: { label: "Linea delle nevi", hint: "Dove comincia la fascia più alta della tavolozza." },
+        palette: { label: "Tavolozza" },
+        res: { label: "Risoluzione della griglia",
+          options: ["96 × 96 — leggera", "128 × 128", "160 × 160 — consigliata", "200 × 200", "256 × 256 — pesante"] },
+        contours: { label: "Curve di livello ogni 200 m" },
+        spin: { label: "Rotazione automatica" }
+      }
+    }
+  };
+
+  var lang = "en";
+  try { if (localStorage.getItem("fc-lang") === "it") lang = "it"; } catch (e) {}
+  var L = I18N[lang];
+  var nf = new Intl.NumberFormat(L.locale);
+
+  /* ── palettes ───────────────────────────────────────── */
+  var PALETTES = {
+    alpino: {
+      sky: ["#a9c7dd", "#d5e4ec", "#eaeee9"],
+      sun: "#fff4e2",
+      deep: "#06233b", shore: "#2e86ad", water: "#2f6f93", waterOpacity: 0.74,
+      rock: "#7c7466", snowStart: 0.74,
+      land: [[0,"#d8ca9f"],[0.05,"#c6c184"],[0.16,"#6e9450"],[0.36,"#3b6a3b"],[0.58,"#5b6753"],[0.74,"#8b8478"],[0.88,"#e7ebee"],[1,"#ffffff"]],
+      strata: ["#4a443f","#7a6f60","#57504a","#6b6257"]
+    },
+    deserto: {
+      sky: ["#dcb98c", "#eedcbd", "#f6efe0"],
+      sun: "#fff0cf",
+      deep: "#123a44", shore: "#3f9aa0", water: "#3f7f86", waterOpacity: 0.7,
+      rock: "#a87d55", snowStart: 0.82,
+      land: [[0,"#efdcb0"],[0.08,"#e3c489"],[0.28,"#cf9c5e"],[0.5,"#b87848"],[0.7,"#95563a"],[0.86,"#c9a887"],[1,"#eaddc6"]],
+      strata: ["#7d5436","#c8a06c","#96683f","#b98a5c"]
+    },
+    artico: {
+      sky: ["#8ea8bd", "#c6d8e3", "#e8f0f5"],
+      sun: "#e9f3ff",
+      deep: "#07203a", shore: "#3d7fa6", water: "#39718f", waterOpacity: 0.78,
+      rock: "#6c7982", snowStart: 0.34,
+      land: [[0,"#c9d5da"],[0.14,"#b5c6d0"],[0.34,"#dbe7ec"],[0.6,"#edf4f7"],[0.82,"#f8fcfd"],[1,"#ffffff"]],
+      strata: ["#55616a","#8e9aa1","#63707a","#7f8d95"]
+    },
+    vulcanico: {
+      sky: ["#241820", "#4e2f2c", "#8c4a31"],
+      sun: "#ffb07a",
+      deep: "#5e1403", shore: "#e8621a", water: "#cf4310", waterOpacity: 0.9,
+      rock: "#4b3b35", snowStart: 0.86,
+      land: [[0,"#3d2b26"],[0.12,"#2c2220"],[0.34,"#443431"],[0.6,"#59433b"],[0.8,"#7a6054"],[1,"#a18c7d"]],
+      strata: ["#241b19","#4a3830","#2a201d","#3a2c27"]
+    },
+    aliena: {
+      sky: ["#2a1a4a", "#61326e", "#c07f7d"],
+      sun: "#ffd2e0",
+      deep: "#04302f", shore: "#23c4b2", water: "#1fa79c", waterOpacity: 0.76,
+      rock: "#5a4470", snowStart: 0.78,
+      land: [[0,"#e6d9a8"],[0.1,"#b8a55f"],[0.3,"#6d4e88"],[0.55,"#9b4f8e"],[0.76,"#d1748c"],[0.9,"#f0c9a8"],[1,"#fdf1de"]],
+      strata: ["#2a1d3a","#5e4577","#39284b","#4a3660"]
+    }
+  };
+
+  /* ── state ──────────────────────────────────────────── */
+  var state = {
+    seed: 4207,
+    noiseType: "fbm",
+    scale: 3.2,
+    octaves: 6,
+    persistence: 0.5,
+    lacunarity: 2.0,
+    warp: 0.35,
+    erosion: 1.35,
+    island: 0.6,
+    altitude: 2800,
+    sea: 0.30,
+    snow: 0.72,
+    palette: "alpino",
+    res: 160,
+    contours: false,
+    spin: !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  };
+  var DEFAULTS = JSON.parse(JSON.stringify(state));
+
+  var SIZE = 110;              // side of the block, in world units
+  var CONTOUR_STEP = 200;      // metres between contour lines
+
+  /* ── seeded simplex noise ───────────────────────────── */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  var GRAD = [1,1, -1,1, 1,-1, -1,-1, 1,0, -1,0, 1,0, -1,0, 0,1, 0,-1, 0,1, 0,-1];
+  function makeNoise(seed) {
+    var p = new Uint8Array(256), i;
+    for (i = 0; i < 256; i++) p[i] = i;
+    var rnd = mulberry32(seed >>> 0);
+    for (i = 255; i > 0; i--) {
+      var j = Math.floor(rnd() * (i + 1)), t = p[i]; p[i] = p[j]; p[j] = t;
+    }
+    var perm = new Uint8Array(512), pm12 = new Uint8Array(512);
+    for (i = 0; i < 512; i++) { perm[i] = p[i & 255]; pm12[i] = perm[i] % 12; }
+
+    var F2 = 0.5 * (Math.sqrt(3) - 1), G2 = (3 - Math.sqrt(3)) / 6;
+    return function (xin, yin) {
+      var n0 = 0, n1 = 0, n2 = 0;
+      var s = (xin + yin) * F2;
+      var ii = Math.floor(xin + s), jj = Math.floor(yin + s);
+      var t = (ii + jj) * G2;
+      var x0 = xin - (ii - t), y0 = yin - (jj - t);
+      var i1, j1;
+      if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
+      var x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
+      var x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
+      var gi = ii & 255, gj = jj & 255;
+      var g0 = pm12[gi + perm[gj]] * 2;
+      var g1 = pm12[gi + i1 + perm[gj + j1]] * 2;
+      var g2 = pm12[gi + 1 + perm[gj + 1]] * 2;
+      var t0 = 0.5 - x0 * x0 - y0 * y0;
+      if (t0 > 0) { t0 *= t0; n0 = t0 * t0 * (GRAD[g0] * x0 + GRAD[g0 + 1] * y0); }
+      var t1 = 0.5 - x1 * x1 - y1 * y1;
+      if (t1 > 0) { t1 *= t1; n1 = t1 * t1 * (GRAD[g1] * x1 + GRAD[g1 + 1] * y1); }
+      var t2 = 0.5 - x2 * x2 - y2 * y2;
+      if (t2 > 0) { t2 *= t2; n2 = t2 * t2 * (GRAD[g2] * x2 + GRAD[g2 + 1] * y2); }
+      return 70 * (n0 + n1 + n2);
+    };
+  }
+
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  function smoothstep(a, b, x) { var t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); }
+
+  /* ── colour ─────────────────────────────────────────── */
+  function srgbToLinear(c) { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  function hexToLin(hex) {
+    var n = parseInt(hex.slice(1), 16);
+    return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
+  }
+  function buildStops(list) {
+    return list.map(function (s) { return { t: s[0], c: hexToLin(s[1]) }; });
+  }
+  function ramp(stops, t, out) {
+    if (t <= stops[0].t) { out[0] = stops[0].c[0]; out[1] = stops[0].c[1]; out[2] = stops[0].c[2]; return out; }
+    for (var i = 1; i < stops.length; i++) {
+      if (t <= stops[i].t) {
+        var a = stops[i - 1], b = stops[i];
+        var k = (t - a.t) / Math.max(1e-6, b.t - a.t);
+        out[0] = a.c[0] + (b.c[0] - a.c[0]) * k;
+        out[1] = a.c[1] + (b.c[1] - a.c[1]) * k;
+        out[2] = a.c[2] + (b.c[2] - a.c[2]) * k;
+        return out;
+      }
+    }
+    var l = stops[stops.length - 1];
+    out[0] = l.c[0]; out[1] = l.c[1]; out[2] = l.c[2]; return out;
+  }
+
+  /* ── elevation field ────────────────────────────────── */
+  var field = { n: 0, h: null, emerged: 0 };
+
+  function computeField() {
+    var N = state.res;
+    var noise = makeNoise(state.seed);
+    var h = new Float32Array(N * N);
+    var f = state.scale;
+    var oct = state.octaves, pers = state.persistence, lac = state.lacunarity;
+    var type = state.noiseType, warp = state.warp, island = state.island;
+    var lo = Infinity, hi = -Infinity;
+
+    for (var j = 0; j < N; j++) {
+      var v = j / (N - 1);
+      for (var i = 0; i < N; i++) {
+        var u = i / (N - 1);
+        var x = u * f, y = v * f;
+        if (warp > 0) {
+          var wx = noise(x * 0.7 + 11.3, y * 0.7 + 4.1);
+          var wy = noise(x * 0.7 + 27.9, y * 0.7 + 19.4);
+          x += wx * warp; y += wy * warp;
+        }
+        var amp = 1, freq = 1, sum = 0, norm = 0;
+        for (var o = 0; o < oct; o++) {
+          var n = noise(x * freq, y * freq);
+          if (type === "ridged") { n = 1 - Math.abs(n); }
+          else if (type === "billow") { n = Math.abs(n); }
+          else { n = n * 0.5 + 0.5; }
+          sum += n * amp; norm += amp;
+          amp *= pers; freq *= lac;
+        }
+        var val = clamp01(sum / Math.max(1e-6, norm));
+        val = Math.pow(val, state.erosion);
+        if (island > 0) {
+          var dx = u * 2 - 1, dy = v * 2 - 1;
+          var r = Math.min(1, Math.sqrt(dx * dx + dy * dy) / 1.06);
+          var fall = 1 - smoothstep(0.28, 1.0, r);
+          val = val * (1 - island) + val * fall * island;
+        }
+        if (val < lo) lo = val;
+        if (val > hi) hi = val;
+        h[j * N + i] = val;
+      }
+    }
+    var span = Math.max(1e-6, hi - lo);
+    for (var k = 0; k < h.length; k++) h[k] = (h[k] - lo) / span;
+    field.n = N; field.h = h;
+  }
+
+  /* ── three.js ───────────────────────────────────────── */
+  var renderer, scene, camera, terrainMesh, terrainGeo, skirtMesh, skirtGeo,
+      waterMesh, sun, hemi, fog, viewport;
+  var cam = { r: 152, theta: 0.72, phi: 1.0, target: 0 };
+  var drag = null, pointers = {}, pinchDist = 0;
+  var needsBuild = false;
+
+  function initThree() {
+    viewport = document.getElementById("viewport");
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    viewport.appendChild(renderer.domElement);
+
+    scene = new THREE.Scene();
+    fog = new THREE.Fog(0xeaeee9, 140, 380);
+    scene.fog = fog;
+
+    camera = new THREE.PerspectiveCamera(42, 1, 0.5, 2000);
+
+    hemi = new THREE.HemisphereLight(0xffffff, 0x404040, 0.55);
+    scene.add(hemi);
+    sun = new THREE.DirectionalLight(0xffffff, 1.15);
+    sun.position.set(-70, 95, 55);
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.16));
+
+    terrainGeo = new THREE.BufferGeometry();
+    terrainMesh = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.94, metalness: 0.0
+    }));
+    scene.add(terrainMesh);
+
+    skirtGeo = new THREE.BufferGeometry();
+    skirtMesh = new THREE.Mesh(skirtGeo, new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 1.0, metalness: 0.0, side: THREE.DoubleSide
+    }));
+    scene.add(skirtMesh);
+
+    waterMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(SIZE, SIZE),
+      new THREE.MeshStandardMaterial({
+        color: 0x2f6f93, transparent: true, opacity: 0.78,
+        roughness: 0.14, metalness: 0.25
+      })
+    );
+    waterMesh.rotation.x = -Math.PI / 2;
+    scene.add(waterMesh);
+
+    bindPointer(renderer.domElement);
+    if (window.ResizeObserver) new ResizeObserver(resize).observe(viewport);
+    window.addEventListener("resize", resize);
+  }
+
+  function resize() {
+    var w = viewport.clientWidth, h = viewport.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+
+  function bindPointer(el) {
+    el.addEventListener("pointerdown", function (e) {
+      el.setPointerCapture(e.pointerId);
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(pointers);
+      if (ids.length === 1) drag = { x: e.clientX, y: e.clientY };
+      else if (ids.length === 2) {
+        var a = pointers[ids[0]], b = pointers[ids[1]];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        drag = null;
+      }
+    });
+    el.addEventListener("pointermove", function (e) {
+      if (!pointers[e.pointerId]) return;
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(pointers);
+      if (ids.length === 2) {
+        var a = pointers[ids[0]], b = pointers[ids[1]];
+        var d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchDist > 0) cam.r = clampR(cam.r * (pinchDist / Math.max(1, d)));
+        pinchDist = d;
+        return;
+      }
+      if (!drag) return;
+      cam.theta -= (e.clientX - drag.x) * 0.006;
+      cam.phi = Math.max(0.12, Math.min(1.49, cam.phi - (e.clientY - drag.y) * 0.005));
+      drag = { x: e.clientX, y: e.clientY };
+    });
+    function release(e) {
+      delete pointers[e.pointerId];
+      if (Object.keys(pointers).length < 2) pinchDist = 0;
+      if (Object.keys(pointers).length === 0) drag = null;
+    }
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointercancel", release);
+    el.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      cam.r = clampR(cam.r * (1 + Math.sign(e.deltaY) * 0.09));
+    }, { passive: false });
+  }
+  function clampR(r) { return Math.max(48, Math.min(430, r)); }
+
+  /* ── mesh construction ──────────────────────────────── */
+  var cache = { n: 0, pos: null, col: null, sp: null, sc: null };
+
+  function allocate(N, count) {
+    // buffers are reallocated only when the resolution changes
+    terrainGeo.dispose();
+    skirtGeo.dispose();
+    terrainGeo.deleteAttribute("normal");
+    skirtGeo.deleteAttribute("normal");
+
+    cache.n = N;
+    cache.pos = new Float32Array(count * 3);
+    cache.col = new Float32Array(count * 3);
+
+    var quads = (N - 1) * (N - 1);
+    var IndexArray = count > 65535 ? Uint32Array : Uint16Array;
+    var idx = new IndexArray(quads * 6), p = 0;
+    for (var j = 0; j < N - 1; j++) {
+      for (var i = 0; i < N - 1; i++) {
+        var a = j * N + i, b = a + 1, c = a + N, d = c + 1;
+        idx[p++] = a; idx[p++] = c; idx[p++] = b;
+        idx[p++] = b; idx[p++] = c; idx[p++] = d;
+      }
+    }
+    terrainGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+    terrainGeo.setAttribute("position", new THREE.BufferAttribute(cache.pos, 3));
+    terrainGeo.setAttribute("color", new THREE.BufferAttribute(cache.col, 3));
+
+    var sv = (N - 1) * 4 * 6 + 6;
+    cache.sp = new Float32Array(sv * 3);
+    cache.sc = new Float32Array(sv * 3);
+    skirtGeo.setAttribute("position", new THREE.BufferAttribute(cache.sp, 3));
+    skirtGeo.setAttribute("color", new THREE.BufferAttribute(cache.sc, 3));
+  }
+
+  function buildMesh() {
+    var pal = PALETTES[state.palette];
+    var landStops = buildStops(pal.land);
+    var seaStops = buildStops([[0, pal.deep], [0.72, pal.water], [1, pal.shore]]);
+    var strataStops = buildStops(pal.strata.map(function (c, i, arr) {
+      return [i / (arr.length - 1), c];
+    }));
+    var rockLin = hexToLin(pal.rock);
+
+    var N = field.n, h = field.h;
+    var H = (state.altitude / 4000) * 30;         // total relief, in world units
+    var baseY = -state.sea * H - 10;
+    var cell = SIZE / (N - 1);
+    var count = N * N;
+
+    if (cache.n !== N) allocate(N, count);
+    var pos = cache.pos, col = cache.col;
+    var tmp = [0, 0, 0];
+    var emerged = 0;
+    var snowStart = pal.snowStart;
+    var snowLine = Math.max(0.05, Math.min(0.98, state.snow));
+    var sea = state.sea;
+
+    for (var j = 0; j < N; j++) {
+      for (var i = 0; i < N; i++) {
+        var idx = j * N + i, o = idx * 3;
+        var hv = h[idx];
+        pos[o] = (i / (N - 1) - 0.5) * SIZE;
+        pos[o + 1] = (hv - sea) * H;
+        pos[o + 2] = (j / (N - 1) - 0.5) * SIZE;
+
+        // local gradient, in normalised elevation units per cell
+        var hl = h[j * N + Math.max(0, i - 1)], hr = h[j * N + Math.min(N - 1, i + 1)];
+        var hu = h[Math.max(0, j - 1) * N + i], hd = h[Math.min(N - 1, j + 1) * N + i];
+        var gx = (hr - hl) * 0.5, gz = (hd - hu) * 0.5;
+        var grad = Math.sqrt(gx * gx + gz * gz);
+
+        if (hv <= sea) {
+          ramp(seaStops, clamp01(hv / Math.max(1e-6, sea)), tmp);
+        } else {
+          emerged++;
+          var t = (hv - sea) / Math.max(1e-6, 1 - sea);
+          // remap the ramp so snow starts at the chosen elevation
+          var tc = t < snowLine
+            ? t * (snowStart / snowLine)
+            : snowStart + (t - snowLine) * (1 - snowStart) / Math.max(1e-6, 1 - snowLine);
+          ramp(landStops, clamp01(tc), tmp);
+
+          // bare rock surfaces where the slope is steep
+          var slope = grad * H / cell;
+          var steep = smoothstep(0.95, 2.5, slope);
+          if (steep > 0) {
+            tmp[0] += (rockLin[0] - tmp[0]) * steep * 0.62;
+            tmp[1] += (rockLin[1] - tmp[1]) * steep * 0.62;
+            tmp[2] += (rockLin[2] - tmp[2]) * steep * 0.62;
+          }
+
+          if (state.contours) {
+            var m = (hv - sea) * state.altitude;                  // elevation in metres a.s.l.
+            var dm = Math.abs(m / CONTOUR_STEP - Math.round(m / CONTOUR_STEP)) * CONTOUR_STEP;
+            var perCell = Math.max(1e-3, grad * state.altitude);  // metres of drop per cell
+            var w = Math.max(perCell * 0.5, CONTOUR_STEP * 0.02);
+            if (dm < w) {
+              var k = 1 - 0.4 * (1 - dm / w);
+              tmp[0] *= k; tmp[1] *= k; tmp[2] *= k;
+            }
+          }
+        }
+        col[o] = tmp[0]; col[o + 1] = tmp[1]; col[o + 2] = tmp[2];
+      }
+    }
+    field.emerged = emerged / count;
+
+    terrainGeo.attributes.position.needsUpdate = true;
+    terrainGeo.attributes.color.needsUpdate = true;
+    terrainGeo.computeVertexNormals();
+    terrainGeo.attributes.normal.needsUpdate = true;
+    terrainGeo.computeBoundingSphere();
+
+    buildSkirt(N, pos, baseY, strataStops);
+
+    // water and atmosphere
+    waterMesh.material.color.setStyle(pal.water).convertSRGBToLinear();
+    waterMesh.material.opacity = pal.waterOpacity;
+    waterMesh.visible = state.sea > 0.001;
+
+    fog.color.setStyle(pal.sky[2]).convertSRGBToLinear();
+    sun.color.setStyle(pal.sun).convertSRGBToLinear();
+    hemi.color.setStyle(pal.sky[0]).convertSRGBToLinear();
+    hemi.groundColor.setStyle(pal.land[0][1]).convertSRGBToLinear();
+    document.getElementById("stage").style.background =
+      "linear-gradient(" + pal.sky[0] + " 0%, " + pal.sky[1] + " 52%, " + pal.sky[2] + " 100%)";
+
+    cam.target = Math.max(0, (0.5 - state.sea) * H * 0.4);
+    updateReadouts();
+  }
+
+  function buildSkirt(N, pos, baseY, strataStops) {
+    var sp = cache.sp, sc = cache.sc;
+    var tmp = [0, 0, 0];
+    var w = 0;
+
+    function put(x, y, z) {
+      sp[w * 3] = x; sp[w * 3 + 1] = y; sp[w * 3 + 2] = z;
+      var t = clamp01((y - baseY) / Math.max(1e-6, SIZE * 0.3 - baseY));
+      ramp(strataStops, t, tmp);
+      var band = 0.84 + 0.16 * (0.5 + 0.5 * Math.sin(y * 2.35));
+      sc[w * 3] = tmp[0] * band; sc[w * 3 + 1] = tmp[1] * band; sc[w * 3 + 2] = tmp[2] * band;
+      w++;
+    }
+    function quad(x1, y1, z1, x2, y2, z2) {
+      put(x1, y1, z1); put(x2, y2, z2); put(x1, baseY, z1);
+      put(x2, y2, z2); put(x2, baseY, z2); put(x1, baseY, z1);
+    }
+    function vy(i, j) { return pos[(j * N + i) * 3 + 1]; }
+    function vx(i) { return (i / (N - 1) - 0.5) * SIZE; }
+
+    for (var i = 0; i < N - 1; i++) {
+      quad(vx(i), vy(i, 0), vx(0), vx(i + 1), vy(i + 1, 0), vx(0));
+      quad(vx(i), vy(i, N - 1), vx(N - 1), vx(i + 1), vy(i + 1, N - 1), vx(N - 1));
+      quad(vx(0), vy(0, i), vx(i), vx(0), vy(0, i + 1), vx(i + 1));
+      quad(vx(N - 1), vy(N - 1, i), vx(i), vx(N - 1), vy(N - 1, i + 1), vx(i + 1));
+    }
+    var e = SIZE / 2;
+    put(-e, baseY, -e); put(e, baseY, -e); put(-e, baseY, e);
+    put(e, baseY, -e); put(e, baseY, e); put(-e, baseY, e);
+
+    skirtGeo.attributes.position.needsUpdate = true;
+    skirtGeo.attributes.color.needsUpdate = true;
+    skirtGeo.computeVertexNormals();
+    skirtGeo.attributes.normal.needsUpdate = true;
+    skirtGeo.computeBoundingSphere();
+  }
+
+  /* ── on-screen readouts ─────────────────────────────── */
+  function updateReadouts() {
+    var peak = Math.round((1 - state.sea) * state.altitude);
+    var deep = Math.round(-state.sea * state.altitude);
+    var chips = [
+      [L.chips.peak, nf.format(peak) + " m"],
+      [L.chips.land, (field.emerged * 100).toFixed(1) + " %"],
+      [L.chips.seabed, nf.format(deep) + " m"],
+      [L.chips.vertices, nf.format(field.n * field.n)],
+      [L.chips.seed, String(state.seed)]
+    ];
+    document.getElementById("chips").innerHTML = chips.map(function (c) {
+      return '<div class="chip"><span class="k">' + c[0] + '</span><span class="v">' + c[1] + "</span></div>";
+    }).join("");
+
+    var pal = PALETTES[state.palette];
+    var snowLine = Math.max(0.05, Math.min(0.98, state.snow));
+    var stops = [];
+    for (var s = 0; s <= 20; s++) {
+      var t = s / 20;
+      var tc = t < snowLine
+        ? t * (pal.snowStart / snowLine)
+        : pal.snowStart + (t - snowLine) * (1 - pal.snowStart) / Math.max(1e-6, 1 - snowLine);
+      stops.push(sampleHex(pal.land, clamp01(tc)) + " " + (t * 100).toFixed(0) + "%");
+    }
+    document.getElementById("legend-bar").style.background =
+      "linear-gradient(to top, " + stops.join(", ") + ")";
+    document.getElementById("legend-ticks").innerHTML =
+      [1, 0.5, 0].map(function (f) {
+        return "<span>" + nf.format(Math.round(peak * f)) + "</span>";
+      }).join("");
+    document.getElementById("legend").hidden = false;
+  }
+
+  function sampleHex(list, t) {
+    var a = list[0], b = list[list.length - 1];
+    for (var i = 1; i < list.length; i++) {
+      if (t <= list[i][0]) { a = list[i - 1]; b = list[i]; break; }
+    }
+    var k = clamp01((t - a[0]) / Math.max(1e-6, b[0] - a[0]));
+    var ca = parseInt(a[1].slice(1), 16), cb = parseInt(b[1].slice(1), 16);
+    var r = Math.round(((ca >> 16) & 255) + (((cb >> 16) & 255) - ((ca >> 16) & 255)) * k);
+    var g = Math.round(((ca >> 8) & 255) + (((cb >> 8) & 255) - ((ca >> 8) & 255)) * k);
+    var bl = Math.round((ca & 255) + ((cb & 255) - (ca & 255)) * k);
+    return "rgb(" + r + "," + g + "," + bl + ")";
+  }
+
+  /* ── parameter panel ────────────────────────────────── */
+  // parameters that force a noise resample; the rest only touch colours
+  var FIELD_KEYS = ["seed", "noiseType", "scale", "octaves", "persistence",
+                    "lacunarity", "warp", "erosion", "island", "res"];
+
+  var GROUPS = [
+    { title: "shape", items: [
+      { k: "noiseType", type: "select", values: ["fbm", "ridged", "billow"] },
+      { k: "scale", type: "range", min: 1, max: 8, step: 0.1, fmt: function (v) { return v.toFixed(1) + "×"; } },
+      { k: "octaves", type: "range", min: 1, max: 9, step: 1, fmt: function (v) { return v.toFixed(0); } },
+      { k: "persistence", type: "range", min: 0.2, max: 0.75, step: 0.01, fmt: function (v) { return v.toFixed(2); } },
+      { k: "lacunarity", type: "range", min: 1.4, max: 3.2, step: 0.05, fmt: function (v) { return v.toFixed(2); } },
+      { k: "warp", type: "range", min: 0, max: 1.2, step: 0.01, fmt: function (v) { return v.toFixed(2); } },
+      { k: "erosion", type: "range", min: 0.6, max: 3, step: 0.05, fmt: function (v) { return v.toFixed(2); } },
+      { k: "island", type: "range", min: 0, max: 1, step: 0.01, fmt: function (v) { return Math.round(v * 100) + " %"; } }
+    ] },
+    { title: "water", items: [
+      { k: "altitude", type: "range", min: 400, max: 5000, step: 50, fmt: function (v) { return nf.format(v) + " m"; } },
+      { k: "sea", type: "range", min: 0, max: 0.75, step: 0.005, fmt: function (v) { return Math.round(v * 100) + " %"; } },
+      { k: "snow", type: "range", min: 0.3, max: 1, step: 0.01, fmt: function (v) { return Math.round(v * 100) + " %"; } }
+    ] },
+    { title: "render", items: [
+      { k: "palette", type: "select", values: Object.keys(PALETTES), labels: "palettes" },
+      { k: "res", type: "select", values: ["96", "128", "160", "200", "256"], parse: Number },
+      { k: "contours", type: "check" },
+      { k: "spin", type: "check" }
+    ] }
+  ];
+
+  function optionLabel(it, value, index) {
+    if (it.labels) return L[it.labels][value];
+    return L.ctl[it.k].options[index];
+  }
+
+  function buildPanel() {
+    var root = document.getElementById("rail-body");
+    var html = "";
+    GROUPS.forEach(function (g) {
+      html += '<section class="group"><div class="group-head"><h2>' + L.groups[g.title] +
+        '</h2><div class="rule"></div></div>';
+      g.items.forEach(function (it) {
+        var id = "c-" + it.k, s = L.ctl[it.k];
+        if (it.type === "range") {
+          html += '<div class="ctl"><div class="ctl-top"><label for="' + id + '">' + s.label + '</label>' +
+            '<span class="val" id="v-' + it.k + '">' + it.fmt(state[it.k]) + "</span></div>" +
+            '<input type="range" id="' + id + '" min="' + it.min + '" max="' + it.max +
+            '" step="' + it.step + '" value="' + state[it.k] + '">' +
+            (s.hint ? '<div class="hint">' + s.hint + "</div>" : "") + "</div>";
+        } else if (it.type === "select") {
+          html += '<div class="ctl"><div class="ctl-top"><label for="' + id + '">' + s.label + "</label></div>" +
+            '<select id="' + id + '">' + it.values.map(function (val, n) {
+              return '<option value="' + val + '"' + (String(state[it.k]) === val ? " selected" : "") +
+                ">" + optionLabel(it, val, n) + "</option>";
+            }).join("") + "</select>" + (s.hint ? '<div class="hint">' + s.hint + "</div>" : "") + "</div>";
+        } else if (it.type === "check") {
+          html += '<label class="check" for="' + id + '"><input type="checkbox" id="' + id + '"' +
+            (state[it.k] ? " checked" : "") + '><span>' + s.label + "</span></label>";
+        }
+      });
+      html += "</section>";
+    });
+
+    html += '<section class="group"><div class="group-head"><h2>' + L.groups.seed +
+      '</h2><div class="rule"></div></div>' +
+      '<div class="ctl"><div class="seed-row">' +
+      '<input type="number" id="c-seed" value="' + state.seed + '" min="0" max="999999" step="1" aria-label="' +
+      L.seedAria + '">' +
+      '<button type="button" id="btn-dice">' + L.roll + "</button></div>" +
+      '<div class="hint">' + L.seedHint + "</div></div>" +
+      '<div class="btn-row"><button type="button" class="primary" id="btn-new">' + L.newWorld + "</button>" +
+      '<button type="button" id="btn-reset">' + L.reset + "</button></div></section>";
+
+    root.innerHTML = html;
+
+    GROUPS.forEach(function (g) {
+      g.items.forEach(function (it) {
+        var el = document.getElementById("c-" + it.k);
+        el.addEventListener("input", function () {
+          if (it.type === "check") state[it.k] = el.checked;
+          else if (it.type === "select") state[it.k] = it.parse ? it.parse(el.value) : el.value;
+          else {
+            state[it.k] = parseFloat(el.value);
+            document.getElementById("v-" + it.k).textContent = it.fmt(state[it.k]);
+          }
+          schedule(FIELD_KEYS.indexOf(it.k) !== -1);
+        });
+      });
+    });
+
+    document.getElementById("c-seed").addEventListener("input", function () {
+      var v = parseInt(this.value, 10);
+      if (!isNaN(v)) { state.seed = v; schedule(true); }
+    });
+    document.getElementById("btn-dice").addEventListener("click", newSeed);
+    document.getElementById("btn-new").addEventListener("click", newSeed);
+    document.getElementById("btn-reset").addEventListener("click", function () {
+      var seed = state.seed;
+      Object.keys(DEFAULTS).forEach(function (k) { state[k] = DEFAULTS[k]; });
+      state.seed = seed;
+      syncPanel();
+      schedule(true);
+    });
+  }
+
+  function newSeed() {
+    state.seed = Math.floor(Math.random() * 100000);
+    document.getElementById("c-seed").value = state.seed;
+    schedule(true);
+  }
+
+  function syncPanel() {
+    GROUPS.forEach(function (g) {
+      g.items.forEach(function (it) {
+        var el = document.getElementById("c-" + it.k);
+        if (it.type === "check") el.checked = state[it.k];
+        else if (it.type === "select") el.value = String(state[it.k]);
+        else {
+          el.value = state[it.k];
+          document.getElementById("v-" + it.k).textContent = it.fmt(state[it.k]);
+        }
+      });
+    });
+    document.getElementById("c-seed").value = state.seed;
+  }
+
+  /* ── language ───────────────────────────────────────── */
+  function applyLang(next) {
+    lang = next;
+    L = I18N[lang];
+    nf = new Intl.NumberFormat(L.locale);
+    document.documentElement.lang = lang;
+    try { localStorage.setItem("fc-lang", lang); } catch (e) {}
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (el) {
+      el.textContent = L[el.getAttribute("data-i18n")];
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-html]"), function (el) {
+      el.innerHTML = L[el.getAttribute("data-i18n-html")];
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("#lang button"), function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-lang") === lang));
+    });
+    document.title = L.title;
+
+    buildPanel();
+    if (field.h) updateReadouts();
+  }
+
+  document.getElementById("lang").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-lang]");
+    if (b && b.getAttribute("data-lang") !== lang) applyLang(b.getAttribute("data-lang"));
+  });
+
+  /* ── frame loop ─────────────────────────────────────── */
+  var refieldNeeded = true;
+  function schedule(refield) {
+    if (refield) refieldNeeded = true;
+    needsBuild = true;
+  }
+
+  var last = performance.now();
+  function loop(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (needsBuild) {
+      needsBuild = false;
+      if (refieldNeeded) { computeField(); refieldNeeded = false; }
+      buildMesh();
+    }
+    if (state.spin && !drag) cam.theta += dt * 0.075;
+    var sp = Math.sin(cam.phi), cp = Math.cos(cam.phi);
+    camera.position.set(
+      cam.r * sp * Math.sin(cam.theta),
+      cam.r * cp,
+      cam.r * sp * Math.cos(cam.theta)
+    );
+    camera.lookAt(0, cam.target, 0);
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+
+  /* ── boot ───────────────────────────────────────────── */
+  applyLang(lang);
+  if (!window.THREE) {
+    document.getElementById("fallback").style.display = "grid";
+  } else {
+    initThree();
+    resize();
+    computeField();
+    buildMesh();
+    refieldNeeded = false;
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>

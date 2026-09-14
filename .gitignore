@@ -1,0 +1,17 @@
+# editors
+.vscode/
+.idea/
+*.code-workspace
+
+# os
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# local experiments
+node_modules/
+*.log
+/tmp/
+/scratch/

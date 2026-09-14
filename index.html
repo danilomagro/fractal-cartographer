@@ -224,9 +224,10 @@ button.primary:hover{ filter:brightness(1.08); }
 }
 
 @media (max-width:900px){
+  /* stacked layout: the terrain leads, the controls follow */
   .app{ grid-template-columns:1fr; height:auto; padding:16px; gap:14px; }
-  .stage{ height:56vh; min-height:340px; }
-  .rail{ overflow:visible; }
+  .stage{ order:1; height:56vh; min-height:340px; }
+  .rail{ order:2; overflow:visible; }
   .legend .ticks{ height:84px; }
 }
 @media (prefers-reduced-motion: reduce){

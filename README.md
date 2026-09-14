@@ -26,8 +26,8 @@ double-click it.
 
 ## How it works
 
-The whole generator is about 400 lines of plain JavaScript plus [three.js](https://threejs.org/) for
-rendering.
+The whole thing is one 1,050-line HTML file — roughly 780 lines of plain JavaScript, 225 of CSS, and
+[three.js](https://threejs.org/) from a CDN for rendering.
 
 1. **Noise.** A 2D simplex noise function is built from a permutation table shuffled by a
    `mulberry32` PRNG, so a seed fully determines the landscape.

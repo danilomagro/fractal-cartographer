@@ -168,6 +168,12 @@ button:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
 button.primary{ background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
 button.primary:hover{ filter:brightness(1.08); }
 .btn-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:16px; }
+button:disabled{ opacity:.55; cursor:default; }
+button:disabled:hover{ border-color:var(--edge); color:var(--ink); filter:none; }
+.progress{
+  height:3px; border-radius:2px; background:var(--edge); overflow:hidden; margin-top:10px;
+}
+.progress-fill{ height:100%; width:0%; background:var(--accent); }
 
 .colophon{
   margin-top:auto; padding:16px 20px; border-top:1px solid var(--edge);
@@ -280,8 +286,12 @@ button.primary:hover{ filter:brightness(1.08); }
       hintBar: "Drag to rotate · scroll or pinch to zoom",
       legendCap: "elevation a.s.l.",
       fallback: "The 3D engine could not be loaded. Reload the page to try again.",
-      groups: { shape: "Terrain shape", water: "Elevation and water", render: "Rendering", seed: "Seed" },
-      chips: { peak: "Peak", land: "Land", seabed: "Seabed", vertices: "Vertices", seed: "Seed" },
+      groups: { shape: "Terrain shape", water: "Elevation and water", erosion: "Hydraulic erosion",
+                render: "Rendering", seed: "Seed" },
+      chips: { peak: "Peak", land: "Land", seabed: "Seabed", vertices: "Vertices", seed: "Seed",
+               eroded: "Eroded" },
+      erode: "Erode", eroding: "Eroding…", restore: "Undo erosion",
+      erodeHint: "Rain falls, carries sediment downhill and drops it where the slope eases. Run it again to carve deeper; changing any terrain parameter starts from bare noise.",
       seedAria: "Generator seed",
       seedHint: "The same number rebuilds the same world, every time.",
       roll: "Roll", newWorld: "New world", reset: "Reset",
@@ -299,6 +309,10 @@ button.primary:hover{ filter:brightness(1.08); }
         altitude: { label: "Total relief", hint: "Drop between the lowest point and the summit." },
         sea: { label: "Sea level", hint: "Where the water stops, as a fraction of total relief." },
         snow: { label: "Snow line", hint: "Where the top band of the palette begins." },
+        droplets: { label: "Droplets", hint: "How many raindrops to simulate — a few seconds per 40,000. Finer grids hold finer channels." },
+        erodeRate: { label: "Erosion rate", hint: "How eagerly a droplet digs into the ground beneath it." },
+        depositRate: { label: "Deposition rate", hint: "How readily it drops its load where the slope eases." },
+        inertia: { label: "Inertia", hint: "How much a droplet keeps its heading — high values meander, low ones follow the steepest line." },
         palette: { label: "Palette" },
         res: { label: "Grid resolution",
           options: ["96 × 96 — light", "128 × 128", "160 × 160 — recommended", "200 × 200", "256 × 256 — heavy"] },
@@ -314,8 +328,12 @@ button.primary:hover{ filter:brightness(1.08); }
       hintBar: "Trascina per ruotare · rotella o pizzico per lo zoom",
       legendCap: "quota s.l.m.",
       fallback: "Non è stato possibile caricare il motore 3D. Ricarica la pagina per riprovare.",
-      groups: { shape: "Forma del rilievo", water: "Quote e acqua", render: "Resa", seed: "Seme" },
-      chips: { peak: "Vetta", land: "Emerso", seabed: "Fondale", vertices: "Vertici", seed: "Seme" },
+      groups: { shape: "Forma del rilievo", water: "Quote e acqua", erosion: "Erosione idraulica",
+                render: "Resa", seed: "Seme" },
+      chips: { peak: "Vetta", land: "Emerso", seabed: "Fondale", vertices: "Vertici", seed: "Seme",
+               eroded: "Eroso" },
+      erode: "Erodi", eroding: "Erosione…", restore: "Annulla erosione",
+      erodeHint: "La pioggia cade, trascina sedimento a valle e lo deposita dove la pendenza cala. Premi di nuovo per scavare più a fondo; toccare un parametro del rilievo riparte dal rumore puro.",
       seedAria: "Seme del generatore",
       seedHint: "Lo stesso numero ricostruisce lo stesso mondo, sempre.",
       roll: "Sorteggia", newWorld: "Nuovo mondo", reset: "Ripristina",
@@ -333,6 +351,10 @@ button.primary:hover{ filter:brightness(1.08); }
         altitude: { label: "Rilievo totale", hint: "Dislivello fra il punto più basso e la vetta." },
         sea: { label: "Livello del mare", hint: "Quota a cui si ferma l'acqua, in frazione del rilievo." },
         snow: { label: "Linea delle nevi", hint: "Dove comincia la fascia più alta della tavolozza." },
+        droplets: { label: "Gocce", hint: "Quante gocce di pioggia simulare: qualche secondo ogni 40.000. Griglie più fini tengono solchi più fini." },
+        erodeRate: { label: "Velocità di erosione", hint: "Con quanta foga una goccia scava il terreno sotto di sé." },
+        depositRate: { label: "Velocità di deposito", hint: "Con quanta facilità molla il carico dove la pendenza cala." },
+        inertia: { label: "Inerzia", hint: "Quanto una goccia mantiene la rotta: valori alti serpeggiano, bassi seguono la massima pendenza." },
         palette: { label: "Tavolozza" },
         res: { label: "Risoluzione della griglia",
           options: ["96 × 96 — leggera", "128 × 128", "160 × 160 — consigliata", "200 × 200", "256 × 256 — pesante"] },
@@ -405,6 +427,10 @@ button.primary:hover{ filter:brightness(1.08); }
     altitude: 2800,
     sea: 0.30,
     snow: 0.72,
+    droplets: 40000,
+    erodeRate: 0.15,
+    depositRate: 0.20,
+    inertia: 0.05,
     palette: "alpino",
     res: 160,
     contours: false,
@@ -489,7 +515,8 @@ button.primary:hover{ filter:brightness(1.08); }
   }
 
   /* ── elevation field ────────────────────────────────── */
-  var field = { n: 0, h: null, emerged: 0 };
+  var field = { n: 0, h: null, base: null, emerged: 0, eroded: 0 };
+  var erosionToken = 0;
 
   function computeField() {
     var N = state.res;
@@ -535,6 +562,146 @@ button.primary:hover{ filter:brightness(1.08); }
     var span = Math.max(1e-6, hi - lo);
     for (var k = 0; k < h.length; k++) h[k] = (h[k] - lo) / span;
     field.n = N; field.h = h;
+    field.base = h.slice();   // pristine noise, kept so erosion can be undone
+    field.eroded = 0;
+    erosionToken++;           // any run in flight is now working on a dead array
+  }
+
+  /* ── hydraulic erosion ──────────────────────────────────────
+     Particle model: a droplet walks downhill carrying sediment, digging where
+     it accelerates and dropping its load where the slope eases. No river is
+     ever drawn — the drainage network is what a few hundred thousand of these
+     leave behind. */
+
+  function makeBrush(radius, N) {
+    var off = [], wt = [], sum = 0, dx, dy, d, w;
+    for (dy = -radius; dy <= radius; dy++) {
+      for (dx = -radius; dx <= radius; dx++) {
+        d = Math.sqrt(dx * dx + dy * dy);
+        if (d > radius) continue;
+        w = radius > 0 ? 1 - d / radius : 1;
+        off.push(dy * N + dx); wt.push(w); sum += w;
+      }
+    }
+    for (var i = 0; i < wt.length; i++) wt[i] /= sum;    // weights total 1
+    // droplets stay `margin` cells from the edge, so the brush never runs off the grid
+    return { off: Int32Array.from(off), w: Float32Array.from(wt), margin: radius + 1 };
+  }
+
+  var _h = 0, _gx = 0, _gy = 0;
+  function sampleField(h, N, x, y) {
+    var xi = x | 0, yi = y | 0;
+    if (xi > N - 2) xi = N - 2; if (xi < 0) xi = 0;
+    if (yi > N - 2) yi = N - 2; if (yi < 0) yi = 0;
+    var u = x - xi, v = y - yi, i00 = yi * N + xi;
+    var h00 = h[i00], h10 = h[i00 + 1], h01 = h[i00 + N], h11 = h[i00 + N + 1];
+    _gx = (h10 - h00) * (1 - v) + (h11 - h01) * v;
+    _gy = (h01 - h00) * (1 - u) + (h11 - h10) * u;
+    _h = h00 * (1 - u) * (1 - v) + h10 * u * (1 - v) + h01 * (1 - u) * v + h11 * u * v;
+  }
+
+  function droplet(h, N, P, brush, rnd) {
+    var m = brush.margin, span = N - 1 - 2 * m;
+    var posX = m + rnd() * span, posY = m + rnd() * span;
+    var dirX = 0, dirY = 0, speed = 1, water = 1, sediment = 0;
+    for (var life = 0; life < P.lifetime; life++) {
+      var nodeX = posX | 0, nodeY = posY | 0;
+      var offX = posX - nodeX, offY = posY - nodeY;
+      sampleField(h, N, posX, posY);
+      var hOld = _h, gx = _gx, gy = _gy;
+
+      dirX = dirX * P.inertia - gx * (1 - P.inertia);
+      dirY = dirY * P.inertia - gy * (1 - P.inertia);
+      var len = Math.sqrt(dirX * dirX + dirY * dirY);
+      if (len < 1e-8) break;                       // sitting in a flat pit
+      dirX /= len; dirY /= len;
+      posX += dirX; posY += dirY;
+      if (posX < m || posX > N - 1 - m || posY < m || posY > N - 1 - m) break;
+
+      sampleField(h, N, posX, posY);
+      var dh = _h - hOld;
+      var capacity = Math.max(-dh * speed * water * P.capacity, P.minSlope);
+
+      if (sediment > capacity || dh > 0) {
+        // slowing down, or climbing: drop the excess on the four nodes it left
+        var drop = (dh > 0) ? Math.min(dh, sediment) : (sediment - capacity) * P.deposit;
+        sediment -= drop;
+        var i0 = nodeY * N + nodeX;
+        h[i0]         += drop * (1 - offX) * (1 - offY);
+        h[i0 + 1]     += drop * offX * (1 - offY);
+        h[i0 + N]     += drop * (1 - offX) * offY;
+        h[i0 + N + 1] += drop * offX * offY;
+      } else {
+        // room to carry more: dig, spread over the brush so no single spike forms
+        var dig = Math.min((capacity - sediment) * P.erode, -dh);
+        var base = nodeY * N + nodeX, boff = brush.off, bw = brush.w;
+        for (var b = 0; b < boff.length; b++) {
+          var bi = base + boff[b];
+          var take = dig * bw[b];
+          if (take > h[bi]) take = h[bi];          // bedrock at the original low point
+          h[bi] -= take;
+          sediment += take;
+        }
+      }
+      speed = Math.sqrt(Math.max(0, speed * speed + dh * P.gravity));
+      water *= (1 - P.evaporate);
+    }
+  }
+
+  var eroding = false;
+
+  function runErosion() {
+    var total = state.droplets | 0;
+    if (eroding || !field.h || total <= 0) return;
+
+    var myToken = erosionToken;
+    var P_RADIUS = 3;
+    var h = field.h, N = field.n;
+    var brush = makeBrush(P_RADIUS, N);
+    var rnd = mulberry32((state.seed ^ 0x9E3779B9) >>> 0);
+    var P = {
+      inertia: state.inertia, capacity: 4, minSlope: 0.003,
+      deposit: state.depositRate, erode: state.erodeRate,
+      gravity: 4, evaporate: 0.012, lifetime: 30
+    };
+
+    var btn = document.getElementById("btn-erode");
+    var bar = document.getElementById("erode-progress");
+    var fill = document.getElementById("erode-fill");
+    eroding = true;
+    btn.disabled = true;
+    btn.textContent = L.eroding;
+    bar.hidden = false;
+    fill.style.width = "0%";
+
+    var done = 0, chunks = 0;
+
+    function finish(completed) {
+      eroding = false;
+      btn.disabled = false;
+      btn.textContent = L.erode;
+      bar.hidden = true;
+      if (completed) { field.eroded += total; needsBuild = true; }
+    }
+
+    (function chunk() {
+      if (myToken !== erosionToken) { finish(false); return; }   // terrain was regenerated
+      var t0 = performance.now();
+      while (done < total && performance.now() - t0 < 12) {
+        for (var i = 0; i < 256 && done < total; i++) { droplet(h, N, P, brush, rnd); done++; }
+      }
+      fill.style.width = (done / total * 100).toFixed(1) + "%";
+      if (++chunks % 6 === 0) needsBuild = true;                 // watch the valleys appear
+      if (done < total) requestAnimationFrame(chunk);
+      else finish(true);
+    })();
+  }
+
+  function restoreTerrain() {
+    if (!field.base || eroding) return;
+    field.h.set(field.base);
+    field.eroded = 0;
+    needsBuild = true;
   }
 
   /* ── three.js ───────────────────────────────────────── */
@@ -821,6 +988,7 @@ button.primary:hover{ filter:brightness(1.08); }
       [L.chips.vertices, nf.format(field.n * field.n)],
       [L.chips.seed, String(state.seed)]
     ];
+    if (field.eroded > 0) chips.splice(4, 0, [L.chips.eroded, nf.format(field.eroded)]);
     document.getElementById("chips").innerHTML = chips.map(function (c) {
       return '<div class="chip"><span class="k">' + c[0] + '</span><span class="v">' + c[1] + "</span></div>";
     }).join("");
@@ -878,6 +1046,12 @@ button.primary:hover{ filter:brightness(1.08); }
       { k: "sea", type: "range", min: 0, max: 0.75, step: 0.005, fmt: function (v) { return Math.round(v * 100) + " %"; } },
       { k: "snow", type: "range", min: 0.3, max: 1, step: 0.01, fmt: function (v) { return Math.round(v * 100) + " %"; } }
     ] },
+    { title: "erosion", items: [
+      { k: "droplets", type: "range", min: 10000, max: 200000, step: 10000, fmt: function (v) { return nf.format(v); } },
+      { k: "erodeRate", type: "range", min: 0.05, max: 0.8, step: 0.01, fmt: function (v) { return v.toFixed(2); } },
+      { k: "depositRate", type: "range", min: 0.05, max: 0.8, step: 0.01, fmt: function (v) { return v.toFixed(2); } },
+      { k: "inertia", type: "range", min: 0, max: 0.6, step: 0.01, fmt: function (v) { return v.toFixed(2); } }
+    ], custom: erosionControls },
     { title: "render", items: [
       { k: "palette", type: "select", values: Object.keys(PALETTES), labels: "palettes" },
       { k: "res", type: "select", values: ["96", "128", "160", "200", "256"], parse: Number },
@@ -885,6 +1059,13 @@ button.primary:hover{ filter:brightness(1.08); }
       { k: "spin", type: "check" }
     ] }
   ];
+
+  function erosionControls() {
+    return '<div class="btn-row"><button type="button" class="primary" id="btn-erode">' + L.erode + "</button>" +
+      '<button type="button" id="btn-restore">' + L.restore + "</button></div>" +
+      '<div class="progress" id="erode-progress" hidden><div class="progress-fill" id="erode-fill"></div></div>' +
+      '<div class="hint" style="margin-top:10px">' + L.erodeHint + "</div>";
+  }
 
   function optionLabel(it, value, index) {
     if (it.labels) return L[it.labels][value];
@@ -916,6 +1097,7 @@ button.primary:hover{ filter:brightness(1.08); }
             (state[it.k] ? " checked" : "") + '><span>' + s.label + "</span></label>";
         }
       });
+      if (g.custom) html += g.custom();
       html += "</section>";
     });
 
@@ -950,6 +1132,8 @@ button.primary:hover{ filter:brightness(1.08); }
       var v = parseInt(this.value, 10);
       if (!isNaN(v)) { state.seed = v; schedule(true); }
     });
+    document.getElementById("btn-erode").addEventListener("click", runErosion);
+    document.getElementById("btn-restore").addEventListener("click", restoreTerrain);
     document.getElementById("btn-dice").addEventListener("click", newSeed);
     document.getElementById("btn-new").addEventListener("click", newSeed);
     document.getElementById("btn-reset").addEventListener("click", function () {

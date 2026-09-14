@@ -21,12 +21,15 @@ double-click it.
 - **A real sea level**, with a seabed ramp below it and a translucent water plane on top.
 - **Contour lines** every 200 m, drawn at constant apparent width by dividing by the local gradient.
 - **A solid block**, not a floating sheet: the terrain sits on a plinth with banded strata down the sides.
+- **Hydraulic erosion** — tens of thousands of simulated raindrops carve rills into the slopes,
+  sharpen the ridgelines and lay sediment fans along the coast. Runs on demand, with a progress bar,
+  and can be undone.
 - **Deterministic seeds** — the same number always rebuilds the same world.
 - **Bilingual UI** — English and Italian, switchable from the header, remembered between visits.
 
 ## How it works
 
-The whole thing is one 1,050-line HTML file — roughly 780 lines of plain JavaScript, 225 of CSS, and
+The whole thing is one 1,239-line HTML file — roughly 960 lines of plain JavaScript, 232 of CSS, and
 [three.js](https://threejs.org/) from a CDN for rendering.
 
 1. **Noise.** A 2D simplex noise function is built from a permutation table shuffled by a
@@ -41,7 +44,16 @@ The whole thing is one 1,050-line HTML file — roughly 780 lines of plain JavaS
 5. **Colouring.** Above sea level the normalised height indexes a colour ramp, remapped so the top
    band starts exactly at the chosen snow line; below it, a separate seabed ramp. The local gradient
    blends in rock on steep slopes and darkens the contour bands.
-6. **Mesh.** Positions and vertex colours are written into pre-allocated typed arrays and reuploaded
+6. **Erosion** (optional, on demand). A droplet is dropped on a random cell carrying direction,
+   speed, water and sediment. At each step it reads the interpolated height and gradient, turns
+   downhill — blending the new direction with its old one, which is what makes valleys meander
+   instead of zig-zag — and moves one cell. Its carrying capacity follows the slope it just
+   descended: below capacity it digs, spreading the bite over a weighted disc so no single-cell
+   spike forms; above it, or when climbing, it drops the excess. Nothing in the code draws a river —
+   the drainage pattern is what tens of thousands of these leave behind. The work is sliced into
+   12 ms slices across animation frames, so the page stays responsive and the terrain visibly
+   changes while it runs.
+7. **Mesh.** Positions and vertex colours are written into pre-allocated typed arrays and reuploaded
    in place, so dragging a slider does not reallocate a single buffer. Colours are converted from
    sRGB to linear because the renderer works in linear space.
 
@@ -62,6 +74,10 @@ The whole thing is one 1,050-line HTML file — roughly 780 lines of plain JavaS
 | Snow line | Where the top band of the palette begins |
 | Palette | Colour ramps, sky, sun and water for the whole scene |
 | Grid resolution | 96² to 256² vertices — raise it for detail, lower it for speed |
+| Droplets | How many raindrops the erosion pass simulates — a few seconds per 40,000 |
+| Erosion rate | How eagerly a droplet digs into the ground beneath it |
+| Deposition rate | How readily it drops its load where the slope eases |
+| Inertia | How much a droplet keeps its heading; high values meander, low ones take the steepest line |
 
 ## Running it
 
@@ -84,8 +100,8 @@ one finger orbits, two fingers pinch to zoom.
 
 ## What's next
 
-See [ROADMAP.md](ROADMAP.md). The big one is hydraulic erosion — simulated rainfall carving V-shaped
-valleys and depositing sediment downstream.
+See [ROADMAP.md](ROADMAP.md). Next up: thermal erosion for scree slopes, rivers drawn from droplet
+flow accumulation, and parameter permalinks so a landscape can be shared as a URL.
 
 ## Licence
 

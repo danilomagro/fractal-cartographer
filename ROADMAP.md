@@ -3,22 +3,24 @@
 Ideas in rough order of how much they would change the result. Nothing here is committed — it is a
 list of things worth building, not a schedule.
 
-## Hydraulic erosion
+## Thermal erosion
 
-The single biggest gain in realism. Drop droplets on the heightmap, let each one carry sediment
-downhill, erode where it accelerates and deposit where it slows. Fractal noise gives mountains that
-are statistically plausible but hydrologically wrong: no drainage network, no V-shaped valleys, no
-alluvial fans. A few hundred thousand droplets fix all three.
-
-- Particle-based erosion pass after the noise stage, before normalisation.
-- Run it in a Web Worker so the UI keeps responding; show a progress bar.
-- Expose droplet count, inertia, capacity and evaporation as an advanced group.
+Four lines next to the hydraulic pass, and a different kind of realism: any slope steeper than a
+talus angle sheds material to its lower neighbours. Rounds off the spires the noise leaves behind
+and piles scree at the foot of cliffs. Cheap enough to run to equilibrium.
 
 ## Rivers and lakes
 
-Falls out of erosion almost for free: accumulate droplet paths into a flow map, then draw anything
+Nearly free now that droplets exist: accumulate their paths into a flow map, then draw anything
 above a flow threshold as water. Lakes need basin filling (priority flood) to find closed
 depressions.
+
+## Faster erosion
+
+A droplet costs about 50 µs, so 40,000 of them take a couple of seconds. Worth revisiting if the
+counts grow: a Web Worker would free the main thread (at the cost of a second file — workers do not
+load from a page opened by double-click), and the grid-based pipe model parallelises onto the GPU
+in a way the particle model does not.
 
 ## Parameter permalinks
 
